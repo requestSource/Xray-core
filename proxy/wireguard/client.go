@@ -280,6 +280,10 @@ func (h *Handler) createIPCRequest() string {
 
 	request.WriteString(fmt.Sprintf("private_key=%s\n", h.conf.SecretKey))
 
+	// AmneziaWG obfuscation, if configured. Device-level, so it has to land
+	// before the first public_key= line. See awg.go.
+	request.WriteString(awgUAPILines())
+
 	if !h.conf.IsClient {
 		// placeholder, we'll handle actual port listening on Xray
 		request.WriteString("listen_port=1337\n")
