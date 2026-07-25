@@ -16,7 +16,7 @@ import (
 	"github.com/sagernet/sing/common/control"
 	"github.com/vishvananda/netlink"
 	"github.com/xtls/xray-core/common/errors"
-	wgtun "golang.zx2c4.com/wireguard/tun"
+	wgtun "github.com/amnezia-vpn/amneziawg-go/tun"
 )
 
 type deviceNet struct {
