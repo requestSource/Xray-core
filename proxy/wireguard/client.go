@@ -26,6 +26,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
@@ -55,6 +56,7 @@ type Handler struct {
 	endpoints        []netip.Addr
 	hasIPv4, hasIPv6 bool
 	wgLock           sync.Mutex
+	closed           atomic.Bool
 }
 
 // New creates a new wireguard handler.
@@ -78,6 +80,13 @@ func New(ctx context.Context, conf *DeviceConfig) (*Handler, error) {
 }
 
 func (h *Handler) Close() (err error) {
+	// Mark closed synchronously and without wgLock: taking the lock here could
+	// block on a long-running processWireGuard, and doing this inside the
+	// teardown goroutine below would leave a window where a racing dispatch
+	// still sees h.net == nil and resurrects a new tunnel after Close returns.
+	// The atomic flag closes that window immediately and can't deadlock.
+	h.closed.Store(true)
+
 	go func() {
 		h.wgLock.Lock()
 		defer h.wgLock.Unlock()
@@ -91,12 +100,16 @@ func (h *Handler) Close() (err error) {
 	return nil
 }
 
-func (h *Handler) processWireGuard(ctx context.Context, dialer internet.Dialer) (err error) {
+func (h *Handler) processWireGuard(ctx context.Context, dialer internet.Dialer) (tunnel Tunnel, err error) {
 	h.wgLock.Lock()
 	defer h.wgLock.Unlock()
 
+	if h.closed.Load() {
+		return nil, errors.New("wireguard handler is closed")
+	}
+
 	if h.bind != nil && h.bind.dialer == dialer && h.net != nil {
-		return nil
+		return h.net, nil
 	}
 
 	log.Record(&log.GeneralMessage{
@@ -137,9 +150,9 @@ func (h *Handler) processWireGuard(ctx context.Context, dialer internet.Dialer) 
 
 	h.net, err = h.makeVirtualTun()
 	if err != nil {
-		return errors.New("failed to create virtual tun interface").Base(err)
+		return nil, errors.New("failed to create virtual tun interface").Base(err)
 	}
-	return nil
+	return h.net, nil
 }
 
 // Process implements OutboundHandler.Dispatch().
@@ -152,7 +165,8 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	ob.Name = "wireguard"
 	ob.CanSpliceCopy = 3
 
-	if err := h.processWireGuard(ctx, dialer); err != nil {
+	tun, err := h.processWireGuard(ctx, dialer)
+	if err != nil {
 		return err
 	}
 
@@ -207,7 +221,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	var responseFunc func() error
 
 	if command == protocol.RequestCommandTCP {
-		conn, err := h.net.DialContextTCPAddrPort(ctx, addrPort)
+		conn, err := tun.DialContextTCPAddrPort(ctx, addrPort)
 		if err != nil {
 			return errors.New("failed to create TCP connection").Base(err)
 		}
@@ -222,7 +236,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 			return buf.Copy(buf.NewReader(conn), link.Writer, buf.UpdateActivity(timer))
 		}
 	} else if command == protocol.RequestCommandUDP {
-		conn, err := h.net.DialUDPAddrPort(netip.AddrPort{}, addrPort)
+		conn, err := tun.DialUDPAddrPort(netip.AddrPort{}, addrPort)
 		if err != nil {
 			return errors.New("failed to create UDP connection").Base(err)
 		}
