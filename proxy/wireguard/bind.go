@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"runtime"
 	"strconv"
+	"sync"
 
 	"github.com/amnezia-vpn/amneziawg-go/conn"
 	"github.com/amnezia-vpn/amneziawg-go/device"
@@ -30,6 +31,16 @@ type netBind struct {
 	workers   int
 	readQueue chan *netReadInfo
 	closedCh  chan struct{}
+
+	// Guards closedCh against a second close(). Handler.Close() tears the
+	// tunnel down (which closes the bind) and nils h.net but NOT h.bind, so
+	// an in-flight dispatch can still reach processWireGuard, miss the early
+	// return (h.net == nil) and call bind.Close() again. A second close() of
+	// the same channel panics, and inside a gomobile library that kills the
+	// whole host process (seen in the field on Android during WireGuard
+	// outbound teardown with live flows).
+	closeMu sync.Mutex
+	closed  bool
 }
 
 // SetMark implements conn.Bind
@@ -77,7 +88,10 @@ func (bind *netBind) BatchSize() int {
 
 // Open implements conn.Bind
 func (bind *netBind) Open(uport uint16) ([]conn.ReceiveFunc, uint16, error) {
+	bind.closeMu.Lock()
 	bind.closedCh = make(chan struct{})
+	bind.closed = false
+	bind.closeMu.Unlock()
 	errors.LogDebug(context.Background(), "bind opened")
 
 	fun := func(bufs [][]byte, sizes []int, eps []conn.Endpoint) (n int, err error) {
@@ -109,8 +123,14 @@ func (bind *netBind) Open(uport uint16) ([]conn.ReceiveFunc, uint16, error) {
 // Close implements conn.Bind
 func (bind *netBind) Close() error {
 	errors.LogDebug(context.Background(), "bind closed")
-	if bind.closedCh != nil {
+	bind.closeMu.Lock()
+	defer bind.closeMu.Unlock()
+	// Idempotent: the device teardown and the handler both close the bind.
+	// closedCh is deliberately NOT set to nil — the receive func selects on
+	// it, and a nil channel blocks forever instead of yielding ErrClosed.
+	if bind.closedCh != nil && !bind.closed {
 		close(bind.closedCh)
+		bind.closed = true
 	}
 	return nil
 }
