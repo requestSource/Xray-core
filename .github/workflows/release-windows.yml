@@ -38,13 +38,22 @@ jobs:
             echo "found: $marker"
           done
 
+      # The asset name deliberately differs from upstream's matrix output.
+      # release.yml in this repo fires on `release: published` - that is, on the
+      # release THIS workflow creates - and uploads its own vanilla
+      # Xray-windows-64.zip to the same tag. Distinct names keep the two from
+      # ever contending for one asset.
       - name: Package
         run: |
-          zip -j Xray-windows-64.zip xray.exe
-          sha256sum Xray-windows-64.zip | tee Xray-windows-64.zip.sha256
+          zip -j Xray-windows-64-awg.zip xray.exe
+          sha256sum Xray-windows-64-awg.zip | tee Xray-windows-64-awg.zip.sha256
 
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}"             --title "${{ github.ref_name }}"             --notes "AmneziaWG patch on upstream $(echo "${{ github.ref_name }}" | cut -d- -f1). Windows amd64 build for the NoNameVPN client."             Xray-windows-64.zip Xray-windows-64.zip.sha256
+          upstream="${GITHUB_REF_NAME%%-awg.*}"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "AmneziaWG patch on upstream $upstream. Windows amd64 build for the NoNameVPN client." \
+            Xray-windows-64-awg.zip Xray-windows-64-awg.zip.sha256
