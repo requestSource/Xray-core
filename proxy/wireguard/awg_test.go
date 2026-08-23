@@ -1,6 +1,9 @@
 package wireguard
 
-import "testing"
+import (
+	"sync"
+	"testing"
+)
 
 // resetAWG returns package state to "SetAWGParams was never called" and drops
 // the cached environment read, so each test observes its own t.Setenv value.
@@ -61,6 +64,43 @@ func TestAWGUAPILines_EnvReadOnlyOnce(t *testing.T) {
 	t.Setenv(awgParamsEnvKey, "jc=9\n")
 	if got := awgUAPILines(); got != "jc=4\n" {
 		t.Fatalf("environment must be cached after the first read, got %q", got)
+	}
+}
+
+func TestAWGUAPILines_EnvWhitespaceOnly(t *testing.T) {
+	resetAWG(t)
+	t.Setenv(awgParamsEnvKey, "   \n\t ")
+	if got := awgUAPILines(); got != "" {
+		t.Fatalf("a blank value must mean vanilla WireGuard, got %q", got)
+	}
+}
+
+// The cached environment read is a double-checked lock: envOnce is read under
+// RLock and created under Lock. Hammer the first call from many goroutines so
+// `go test -race` actually exercises that branch.
+func TestAWGUAPILines_ConcurrentFirstRead(t *testing.T) {
+	resetAWG(t)
+	t.Setenv(awgParamsEnvKey, "jc=4\n")
+
+	const goroutines = 32
+	got := make([]string, goroutines)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := range goroutines {
+		go func() {
+			defer wg.Done()
+			<-start
+			got[i] = awgUAPILines()
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	for i, v := range got {
+		if v != "jc=4\n" {
+			t.Fatalf("goroutine %d saw %q, want %q", i, v, "jc=4\n")
+		}
 	}
 }
 
