@@ -163,7 +163,13 @@ func (bind *netBindClient) connectTo(endpoint *netEndpoint) error {
 			}
 
 			rawBytes := buff.Bytes()
-			if n > 3 {
+			// Normalise the WARP "reserved" bytes that follow the 1-byte
+			// message type in vanilla WireGuard. AmneziaWG spends all four
+			// header bytes on its magic type (h1..h4), so zeroing bytes 1-3
+			// there corrupts every packet whose type is read at offset 0 —
+			// i.e. transport data, while junk-prefixed handshakes still parse
+			// (their type sits past the junk) and the tunnel looks half-alive.
+			if n > 3 && awgUAPILines() == "" {
 				rawBytes[1] = 0
 				rawBytes[2] = 0
 				rawBytes[3] = 0
