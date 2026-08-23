@@ -52,6 +52,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # workflow_dispatch on a branch would otherwise try to create a
+          # release named after the branch. Only tags may publish.
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "refusing to release from $GITHUB_REF_TYPE $GITHUB_REF_NAME; tag the commit instead" >&2
+            exit 1
+          fi
           upstream="${GITHUB_REF_NAME%%-awg.*}"
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \

@@ -103,12 +103,15 @@ func (s *Server) Process(ctx context.Context, network net.Network, conn stat.Con
 		for i, b := range mb {
 
 			rawBytes := b.Bytes()
-			// Same guard as the client receive path in bind.go: AmneziaWG
-			// spends header bytes 1-3 on its magic message type (h1..h4), so
-			// zeroing them there corrupts every packet whose type is read at
-			// offset 0. Vanilla WireGuard keeps the WARP "reserved" bytes
-			// here and still gets them cleared.
-			if b.Len() > 3 && awgUAPILines() == "" {
+			// Unconditional on purpose - do NOT copy bind.go's AmneziaWG guard
+			// here. That guard keys off process-global AWG state, but this
+			// device is always vanilla WireGuard: the server builds its UAPI
+			// request through createIPCRequest in wireguard.go, which never
+			// writes awgUAPILines (only the client's own createIPCRequest in
+			// client.go does). Gating this on AWG would stop clearing the WARP
+			// reserved bytes for a vanilla device whenever the same process
+			// happens to run an AWG client.
+			if b.Len() > 3 {
 				rawBytes[1] = 0
 				rawBytes[2] = 0
 				rawBytes[3] = 0
