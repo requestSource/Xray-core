@@ -3,8 +3,8 @@ module github.com/xtls/xray-core
 go 1.26
 
 require (
-	github.com/apernet/quic-go v0.59.1-0.20260330051153-c402ee641eb6
 	github.com/amnezia-vpn/amneziawg-go v1.0.4
+	github.com/apernet/quic-go v0.59.1-0.20260330051153-c402ee641eb6
 	github.com/cloudflare/circl v1.6.3
 	github.com/ghodss/yaml v1.0.1-0.20220118164431-d8423dcdf344
 	github.com/golang/mock v1.7.0-rc.1
@@ -47,9 +47,9 @@ require (
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/tevino/abool v1.2.0 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260120221211-b8f7ae30c516 // indirect
