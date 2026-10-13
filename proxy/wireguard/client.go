@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.zx2c4.com/wireguard/tun"
+	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
 
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
@@ -27,7 +27,7 @@ import (
 	"github.com/xtls/xray-core/features/stats"
 	"github.com/xtls/xray-core/transport"
 	"github.com/xtls/xray-core/transport/internet"
-	"golang.zx2c4.com/wireguard/device"
+	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 )
 
 type Handler struct {
@@ -312,6 +312,9 @@ func (h *Handler) init(ctx context.Context) error {
 	bind.setDownFunc(dev.Down)
 	var cfg strings.Builder
 	cfg.WriteString("private_key=" + h.conf.SecretKey + "\n")
+	// AmneziaWG obfuscation, if configured. Device-level, so it has to land
+	// before the first public_key= line. See awg.go.
+	cfg.WriteString(awgUAPILines())
 	for _, peer := range h.conf.Peers {
 		cfg.WriteString("public_key=" + peer.PublicKey + "\n")
 		if peer.PreSharedKey != "" {
