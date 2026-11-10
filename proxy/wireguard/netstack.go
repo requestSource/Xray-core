@@ -23,7 +23,7 @@ import (
 	"github.com/xtls/xray-core/common/buf"
 	xnet "github.com/xtls/xray-core/common/net"
 	xtun "github.com/xtls/xray-core/proxy/tun"
-	"golang.zx2c4.com/wireguard/tun"
+	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
 
 	"golang.org/x/net/dns/dnsmessage"
 )

@@ -15,7 +15,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"golang.zx2c4.com/wireguard/tun"
+	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
 
 	"golang.org/x/net/route"
 	"golang.org/x/sys/unix"
