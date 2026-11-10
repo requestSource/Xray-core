@@ -181,7 +181,7 @@ func NewClient(ctx context.Context, conf *DeviceConfig) (*Handler, error) {
 	cfg.WriteString("private_key=" + conf.SecretKey + "\n")
 	// AmneziaWG obfuscation, if configured. Device-level, so it has to land
 	// before the first public_key= line. See awg.go.
-	cfg.WriteString(awgUAPILines())
+	cfg.WriteString(awgForDevice(bind))
 	for _, peer := range conf.Peers {
 		cfg.WriteString("public_key=" + peer.PublicKey + "\n")
 		if peer.PreSharedKey != "" {

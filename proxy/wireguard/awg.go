@@ -24,9 +24,8 @@ var awgParams struct {
 	uapi string
 	set  bool
 
-	// envOnce guards the single read of awgParamsEnvKey. awgUAPILines is on
-	// the packet receive path (see bind.go), so the environment must not be
-	// touched per packet.
+	// envOnce guards the single read of awgParamsEnvKey, so the environment
+	// is read once per process, not once per device.
 	envOnce *sync.Once
 	env     string
 }
@@ -56,7 +55,7 @@ const awgParamsEnvKey = "XRAY_AWG_PARAMS"
 // to the environment.
 func SetAWGParams(uapi string) {
 	awgParams.Lock()
-	awgParams.uapi = uapi
+	awgParams.uapi = normalizeAWGParams(uapi)
 	awgParams.set = true
 	awgParams.Unlock()
 }
@@ -90,15 +89,34 @@ func awgUAPILines() string {
 }
 
 // awgParamsFromEnv normalises awgParamsEnvKey into UAPI lines: backslash-n
-// escapes become real newlines and the result is newline-terminated. Returns ""
-// for an unset or blank value, i.e. vanilla WireGuard.
+// escapes become real newlines, then normalizeAWGParams. Returns "" for an
+// unset or blank value, i.e. vanilla WireGuard.
 func awgParamsFromEnv() string {
-	raw := strings.ReplaceAll(os.Getenv(awgParamsEnvKey), `\n`, "\n")
-	if strings.TrimSpace(raw) == "" {
-		return ""
+	return normalizeAWGParams(strings.ReplaceAll(os.Getenv(awgParamsEnvKey), `\n`, "\n"))
+}
+
+// normalizeAWGParams drops CRs and empty or whitespace-only lines and ends the
+// result with exactly one newline: a blank line ends a UAPI set transaction, so
+// a stray "\n\n" or CRLF would silently drop every peer line that follows.
+// Returns "" when nothing is left, i.e. vanilla WireGuard. Keys and values are
+// not validated; amneziawg-go does that.
+func normalizeAWGParams(uapi string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(strings.ReplaceAll(uapi, "\r", ""), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		b.WriteString(line + "\n")
 	}
-	if !strings.HasSuffix(raw, "\n") {
-		raw += "\n"
-	}
-	return raw
+	return b.String()
+}
+
+// awgForDevice takes the AWG decision once for a new outbound device: it
+// returns the UAPI lines to put before the first peer and records on b whether
+// AWG is active, so the packet path never reads the process-global params and
+// a later SetAWGParams cannot change a device that is already built.
+func awgForDevice(b *bind) string {
+	uapi := awgUAPILines()
+	b.awg = uapi != ""
+	return uapi
 }
