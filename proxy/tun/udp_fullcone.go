@@ -16,6 +16,8 @@ type udpConnectionHandler struct {
 	sync.RWMutex
 
 	udpConns map[net.Destination]*udpConn
+	// closed: the stack shut down; no new flow is opened after closeAll.
+	closed bool
 
 	handleConnection func(conn net.Conn, dest net.Destination)
 	writePacket      func(data []byte, src net.Destination, dst net.Destination) error
@@ -53,6 +55,10 @@ func (u *udpConnectionHandler) HandlePacket(src net.Destination, dst net.Destina
 
 	conn, found = u.udpConns[src]
 	if !found {
+		if u.closed {
+			data.Release()
+			return
+		}
 		conn = &udpConn{handler: u, queue: newPacketQueue(udpQueueLimit), src: src, dst: dst}
 		u.udpConns[src] = conn
 
@@ -71,6 +77,19 @@ func (u *udpConnectionHandler) connectionFinished(conn *udpConn) {
 	// Close runs twice per flow; a newer conn may already own this src.
 	if u.udpConns[conn.src] == conn {
 		delete(u.udpConns, conn.src)
+		conn.queue.close()
+	}
+	u.Unlock()
+}
+
+// closeAll ends every flow when the stack shuts down: a flow's reader only
+// returns once its queue is closed, and the outbound holding a socket for it
+// waits on that reader.
+func (u *udpConnectionHandler) closeAll() {
+	u.Lock()
+	u.closed = true
+	for src, conn := range u.udpConns {
+		delete(u.udpConns, src)
 		conn.queue.close()
 	}
 	u.Unlock()

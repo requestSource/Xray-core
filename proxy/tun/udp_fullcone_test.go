@@ -89,3 +89,44 @@ func TestPacketQueueDropsDrainedStorage(t *testing.T) {
 		t.Fatalf("drained queue still holds %d slots", cap(q.items))
 	}
 }
+
+// TestStackCloseEndsUDPFlows: Close must wake every full-cone flow reader, or
+// the outbound behind it keeps its socket until the idle timeout.
+func TestStackCloseEndsUDPFlows(t *testing.T) {
+	ended := make(chan struct{}, 4)
+	s := &stack{}
+	s.udp = newUdpConnectionHandler(func(conn net.Conn, dest net.Destination) {
+		b := make([]byte, 64)
+		for {
+			if _, err := conn.Read(b); err != nil {
+				ended <- struct{}{}
+				return
+			}
+		}
+	}, nil)
+	dst := net.UDPDestination(net.ParseAddress("1.1.1.1"), 443)
+	for i := 0; i < 4; i++ {
+		src := net.UDPDestination(net.IPAddress([]byte{10, 0, 0, byte(i + 1)}), net.Port(40000+i))
+		b := buf.New()
+		b.WriteByte(1)
+		s.udp.HandlePacket(src, dst, b)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		select {
+		case <-ended:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("flow %d still open after Close", i)
+		}
+	}
+	// a packet that races Close does not open a new flow
+	s.udp.HandlePacket(net.UDPDestination(net.IPAddress([]byte{10, 0, 0, 9}), net.Port(40009)), dst, buf.New())
+	s.udp.RLock()
+	n := len(s.udp.udpConns)
+	s.udp.RUnlock()
+	if n != 0 {
+		t.Fatalf("%d flows opened after Close", n)
+	}
+}

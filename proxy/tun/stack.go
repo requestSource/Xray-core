@@ -148,6 +148,9 @@ func (s *stack) Close() error {
 	for _, u := range sockets {
 		u.queue.close()
 	}
+	if s.udp != nil {
+		s.udp.closeAll()
+	}
 	return nil
 }
 
